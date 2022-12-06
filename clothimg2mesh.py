@@ -220,8 +220,9 @@ def detect_landmarks(contour, contour_points, img,  epsilon = 0.001, min_dist = 
                     landmarks.append(nearest_idx)  
                     contour_points.append(nearest_idx)
                     # viualize 
-                    cv2.drawMarker(img, (contour[nearest_idx,0],contour[nearest_idx,1]), color=(255,0,0), markerType=cv2.MARKER_STAR, markerSize = 4, thickness=1)
-                    cv2.putText(img, str(count_landmarks), org = (contour[nearest_idx,0],contour[nearest_idx,1]), fontFace = cv2.FONT_HERSHEY_SIMPLEX, fontScale = 1, color = (255,0,0), thickness = 1)
+                    if debug:
+                        cv2.drawMarker(img, (contour[nearest_idx,0],contour[nearest_idx,1]), color=(255,0,0), markerType=cv2.MARKER_STAR, markerSize = 4, thickness=1)
+                        cv2.putText(img, str(count_landmarks), org = (contour[nearest_idx,0],contour[nearest_idx,1]), fontFace = cv2.FONT_HERSHEY_SIMPLEX, fontScale = 1, color = (255,0,0), thickness = 1)
                     count_landmarks += 1
 
     return landmarks
@@ -502,12 +503,14 @@ def uv2mesh_using_triangle(img, mask, num_grid = 10, debug = False):
     # add contour points
     i = 0
     contour_points.append(i)
-    cv2.drawMarker(img, (contour[i,0],contour[i,1]), color=(0,255,0), markerType=cv2.MARKER_CROSS, markerSize = 4, thickness=1)
+    if debug:
+        cv2.drawMarker(img, (contour[i,0],contour[i,1]), color=(0,255,0), markerType=cv2.MARKER_CROSS, markerSize = 4, thickness=1)
     for i in range(1, len(contour)): 
         dx, dy = contour[i-1,:] - contour[i,:]
         if dx*dx + dy*dy > grid_step*grid_step:
             contour_points.append(i)
-            cv2.drawMarker(img, (contour[i,0],contour[i,1]), color=(0,255,0), markerType=cv2.MARKER_CROSS, markerSize = 4, thickness=1)
+            if debug: 
+                cv2.drawMarker(img, (contour[i,0],contour[i,1]), color=(0,255,0), markerType=cv2.MARKER_CROSS, markerSize = 4, thickness=1)
 
     # 2. detect landmark corners 
     landmarks = detect_landmarks(contour, contour_points, img)    
@@ -545,6 +548,57 @@ def uv2mesh_using_triangle(img, mask, num_grid = 10, debug = False):
        
     return mesh, N   
  
+def matching_back_to_front_pca(clothF, clothF_mask, clothB, clothB_mask):
+
+    ''' 
+        matching/warping back to front using PCA method 
+    
+    '''
+  
+    (h,w) = clothF.shape[:2]
+  
+    # 1. covariance 
+    ptsF = np.array(np.where(clothF_mask>127)).T
+    ptsB = np.array(np.where(clothB_mask>127)).T
+    centerF = (np.mean(ptsF[:,1]), np.mean(ptsF[:,0]))  # center 
+    centerB = (np.mean(ptsB[:,1]), np.mean(ptsB[:,0]))  # center
+    covF = np.cov(ptsF[:,1], ptsF[:,0])
+    covB = np.cov(ptsB[:,1], ptsB[:,0])
+    
+    # 2. eigen vec and values 
+    evalF, evecF = np.linalg.eig(covF)
+    evalB, evecB = np.linalg.eig(covB)
+
+    # eigen vectors 
+    if evalF[1]>evalF[0]:
+        evalF = evalF[::-1]
+        evecF = evecF[:,::-1]
+    
+    if evalB[1]>evalB[0]:
+        evalB = evalB[::-1]
+        evecB = evecB[:,::-1]
+
+    # eignen values 
+    evalF = np.sqrt(evalF)
+    evalB = np.sqrt(evalB)
+
+    # 3. elipse approximation and 3 points (center and long and short end points)
+    affinePtsF = np.float32([centerF, 
+                            [centerF[0]+int(evalF[0]*evecF[0][0]), centerF[1]+int(evalF[0]*evecF[0][1])],
+                            [centerF[0]+int(evalF[1]*evecF[1][0]), centerF[1]+int(evalF[1]*evecF[1][1])]])
+    affinePtsB = np.float32([centerB, 
+                            [centerB[0]+int(evalB[0]*evecB[0][0]), centerB[1]+int(evalB[0]*evecB[0][1])],
+                            [centerB[0]+int(evalB[1]*evecB[1][0]), centerB[1]+int(evalB[1]*evecB[1][1])]])
+    
+    # 4. estimate Affine matrix from 3 points 
+    M = cv2.getAffineTransform(affinePtsB, affinePtsF)
+    
+    # 5. warping back to match front as much as possible 
+    clothB_warped = cv2.warpAffine(clothB, M, (w,h))
+    clothB_mask_warped = cv2.warpAffine(clothB_mask, M, (w,h))
+    
+    return clothB_warped, clothB_mask_warped
+  
 
 def test_make_mesh_single_image():
 
@@ -655,13 +709,18 @@ def test_make_mesh_both_image():
 
 
         # 3. matching two parts 
+        
+        # using PCA method         
+        cloth_back_flipped, mask_back_flipped = matching_back_to_front_pca(cloth_front, mask_front, cloth_back_flipped, mask_back_flipped)
+
+
+        '''
+          # @TODO DUNG  (SCM)
         # 3.1 find key points of clothings
         # I recommend to use contours ...
 
-        # 3.2 find matching (SCM)
-        # @TODO DUNG
-
-        '''
+        # 3.2 find matching
+      
         match_index_pairs = context_shape_match( .....)
         # also need the x, y coordinate for the indexed points too
         
@@ -681,24 +740,34 @@ def test_make_mesh_both_image():
         mask_intersection = mask_intersection.astype(np.uint8)
         
         # after warping, the intersection should be almost union !
-        if False:
+        if True:
             test = np.zeros_like(cloth_front)
             test[:,:,0] = mask_back
             test[:,:,1] = mask_back_flipped
             test[:,:,2] = mask_intersection
-            plt.subplot(3,1,1)
+            plt.subplot(2,3,1)
             plt.title('back vs back flipped and intersect')  
             plt.imshow(test[:,:,::-1])
             
             test[:,:,0] = mask_front
             test[:,:,1] = mask_back_flipped
             test[:,:,2] = mask_intersection
-            plt.subplot(3,1,2)
+            plt.subplot(2,3,2)
             plt.imshow(test[:,:,::-1])
             plt.title('front vs back flipped and intersect')
             
-            plt.subplot(3,1,3)
-            plt.imshow(mask_intersection)
+            
+            plt.subplot(2,3,3)
+            plt.imshow( mask_intersection  )
+            
+            plt.subplot(2,3,4)
+            cloth_front[mask_intersection < 127, : ] = 0
+            plt.imshow(  cloth_front[:,:,::-1] )
+            
+            plt.subplot(2,3,5)
+            cloth_back_flipped[mask_intersection < 127, : ] = 0
+            plt.imshow(cloth_back_flipped[:,:,::-1] )
+            
             plt.show()
         
         # do we need to modify the color clothing based on the mask ? maybe not
@@ -708,7 +777,7 @@ def test_make_mesh_both_image():
         # 4.1 get contours for the intersection 
         
         print(f"type of mask_intersection:{mask_intersection.dtype}")
-        tri_mesh_front, n_contours = uv2mesh_using_triangle(cloth_front, mask_intersection, num_grid = 20, debug = True)
+        tri_mesh_front, n_contours = uv2mesh_using_triangle(cloth_front, mask_intersection, num_grid = 20, debug = False)
       
         # 4.2 take key points for mesh 
         # 4.3 make a 2D triangle mesh (using trimesh package)
@@ -718,7 +787,7 @@ def test_make_mesh_both_image():
         
        
         if True:
-            texture  = cv2.hconcat([cloth_front, cloth_back])
+            texture  = cv2.hconcat([cloth_front, cloth_back_flipped])
             cloth_texture_path = os.path.join('obj',  cloth_id +".png")
             cv2.imwrite(cloth_texture_path, texture)
             save_both_tri_obj(tri_mesh_front, base_dir = 'obj', file_name = cloth_id, 
@@ -741,8 +810,6 @@ def test_make_mesh_both_image():
         print(f"edge_info:{edge_info}")
         with open(os.path.join('obj', cloth_id +'.pickle'), 'wb') as handle:
             pickle.dump(edge_info, handle)
-     
-        
      
 if __name__ == "__main__":
 
