@@ -440,7 +440,8 @@ def uv2mesh_using_trangle(img, mask, cloth_type, num_grid = 10, debug = False):
         
     return mesh    
  
-if __name__ == "__main__":
+
+def test_make_mesh_single_image():
 
     cloth_list = ["dTest_F", "dTest_B", "uTest_F", "uTest_B"]
     mask_list = ["dTest_mask_F", "dTest_mask_B", "uTest_mask_F", "uTest_mask_B"]
@@ -473,3 +474,125 @@ if __name__ == "__main__":
         #uv2mesh_old(cloth, cloth_mask, cloth_type)
         tri_mesh = uv2mesh_using_trangle(cloth, cloth_mask, cloth_type, num_grid = 20, debug = True)
         save_tri_obj(tri_mesh, file_path = cloth_id +".obj", texture_path = cloth_path, texture_size =(cloth.shape[1], cloth.shape[0]))
+
+
+def test_make_mesh_both_image():
+
+    cloth_front_list = ["dTest_F", "uTest_F"]
+    cloth_back_list = ["dTest_B", "uTest_B"]
+    mask_front_list = ["dTest_mask_F", "uTest_mask_F"]
+    mask_back_list = [ "dTest_mask_B", "uTest_mask_B"]
+    cloth_type_list = ["top_short", "pants_long"]
+        
+    for cloth_front, cloth_back, mask_front, mask_back \
+            in zip(cloth_front_list, cloth_back_list, mask_front_list, mask_back_list):
+
+        # 1. loading clothings and masks
+        
+        cloth_front_path = os.path.join("cloth", cloth_front + ".jpg")
+        cloth_back_path = os.path.join("cloth", cloth_back + ".jpg")
+        mask_front_path = os.path.join("cloth-mask", mask_front + ".png")
+        mask_back_path = os.path.join("cloth-mask", mask_back + ".png")
+        
+        #print(f"{cloth_path}, {cloth_mask_path}")
+        
+        cloth_front = cv2.imread(cloth_front_path)
+        cloth_back  = cv2.imread(cloth_back_path)
+        mask_front = cv2.imread(mask_front_path, cv2.IMREAD_UNCHANGED)
+        mask_back = cv2.imread(mask_back_path, cv2.IMREAD_UNCHANGED)
+       
+       
+        if cloth_front is None or mask_front is None:
+            print(f"No such a file {cloth_path} ")
+            exit()
+        
+        if cloth_back is None or mask_back is None:
+            print(f"No such a file {cloth_mask_path} ")
+            exit()    
+            
+            
+        if False:    
+            plt.subplot(2,2,1)
+            plt.imshow(cloth_front[:,:,::-1])
+            plt.subplot(2,2,2)
+            plt.imshow(cloth_back[:,:,::-1])
+            plt.subplot(2,2,3)
+            plt.imshow(mask_front, cmap='gray')
+            plt.subplot(2,2,4)
+            plt.imshow(mask_back, cmap='gray')
+            
+            plt.show()
+            
+            
+        # 2. flipping the back clothing
+        cloth_back_flipped = cloth_back[:,::-1, :]
+        mask_back_flipped  = mask_back[:,::-1]
+        
+        if False:
+            test = np.zeros_like(cloth_front)
+            test[:,:,0] = mask_back
+            test[:,:,1] = mask_back_flipped
+            test[:,:,2] = 0
+            plt.subplot(2,1,1)
+            plt.title('back vs back flipped')
+        
+            plt.imshow(test[:,:,::-1])
+            
+            test[:,:,0] = mask_front
+            test[:,:,1] = mask_back_flipped
+            test[:,:,2] = 0
+            plt.subplot(2,1,2)
+            plt.imshow(test[:,:,::-1])
+            plt.title('front vs back flipped')
+            plt.show()
+
+
+        # 3. matching two parts 
+        # 3.1 find key points of clothings
+        # I recommend to use contours ...
+
+        # 3.2 find matching (SCM)
+
+        match_index_pairs = context_shape_match( .....)
+        # also need the x, y coordinate for the indexed points too
+        
+        # 3.3 find affine transform 
+        affine_mat = estimate_affine(match_index_pairs, front_pts, back_pts2)
+        
+        # 3.4 warp the back part to match front part 
+        cloth_back_warped = cv.warpAffine(cloth_back_flipped, affine_mat, dsize[, dst[, flags[, borderMode[, borderValue]]]]	) ->	dst
+        mask_back_warped = cv.warpAffine(mask_back_flipped, affine_mat, dsize[, dst[, flags[, borderMode[, borderValue]]]]	) ->	dst
+
+        # 3.5 get intersection or front and back 
+        mask_insersection = np.zeros_like(mask_back_warped)
+        mask_intersection = (mask_front > 0) and (mask_back_warped > 0)
+        
+        # do we need to modify the color clothing based on the mask ? maybe not
+        
+        # 4. make mesh
+        # Professor will make this part first for you.
+        # 4.1 get contours for the intersection 
+        tri_mesh = uv2mesh_using_trangle(cloth, cloth_mask, cloth_type, num_grid = 20, debug = True)
+      
+        # 4.2 take key points for mesh 
+        # 4.3 make a 2D triangle mesh (using trimesh package)
+        # 5. save retult
+        # 5.1 make a 3D mesh for front and back (with z gap)
+        # 5.2 save the mesh into OBJ file 
+        save_tri_obj(tri_mesh, file_path = cloth_id +".obj", texture_path = cloth_path, texture_size =(cloth.shape[1], cloth.shape[0]))        
+ 
+        # @TODO develope a algorithm to decide which vertices are used for sewing ***
+        #       This is quite important contribution to the paper
+        
+        # 5.3 save sewing vertices indices pairs between front and back into npy file or pickle file 
+        
+        
+        '''
+        #uv2mesh_old(cloth, cloth_mask, cloth_type)
+        tri_mesh = uv2mesh_using_trangle(cloth, cloth_mask, cloth_type, num_grid = 20, debug = True)
+       
+        '''
+if __name__ == "__main__":
+
+
+    test_make_mesh_both_image()
