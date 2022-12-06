@@ -14,8 +14,9 @@ import os
  
 '''
 
+'''
 # Check if a point is inside a rectangle
-def rect_contains(rect, point) :
+def _rect_contains(rect, point) :
     if point[0] < rect[0] :
         return False
     elif point[1] < rect[1] :
@@ -38,7 +39,7 @@ def inside_object_simple(mask, pt0, pt1, pt2):
     else:
         return False
 
-def inside_object(mask, pt0, pt1, pt2):
+def _inside_object(mask, pt0, pt1, pt2):
     
     # @ToDO check all pixel positions 
     # now simply check centroid of triangle 
@@ -56,7 +57,7 @@ def inside_object(mask, pt0, pt1, pt2):
     return True
         
     
-def filter_inner_triangles(r, subdiv, object_mask) :
+def _filter_inner_triangles(r, subdiv, object_mask) :
 
     triangleList = subdiv.getTriangleList();
    
@@ -71,7 +72,8 @@ def filter_inner_triangles(r, subdiv, object_mask) :
                 inside_triangleList.append([pt1, pt2, pt3])
                 
     return  inside_triangleList           
-                
+'''
+               
 def draw_delaunay(img, triangleList, delaunay_color) :
 
     for t in triangleList :
@@ -219,13 +221,14 @@ def detect_landmarks(contour, contour_points, img,  epsilon = 0.001, min_dist = 
                     contour_points.append(nearest_idx)
                     # viualize 
                     cv2.drawMarker(img, (contour[nearest_idx,0],contour[nearest_idx,1]), color=(255,0,0), markerType=cv2.MARKER_STAR, markerSize = 4, thickness=1)
-                    cv2.putText(cloth, str(count_landmarks), org = (contour[nearest_idx,0],contour[nearest_idx,1]), fontFace = cv2.FONT_HERSHEY_SIMPLEX, fontScale = 1, color = (255,0,0), thickness = 1)
+                    cv2.putText(img, str(count_landmarks), org = (contour[nearest_idx,0],contour[nearest_idx,1]), fontFace = cv2.FONT_HERSHEY_SIMPLEX, fontScale = 1, color = (255,0,0), thickness = 1)
                     count_landmarks += 1
 
     return landmarks
     
 
-def uv2mesh_old(img, mask, cloth_type):
+'''
+def _uv2mesh_old(img, mask, cloth_type):
 
     # find contours 
     # sample contour points 
@@ -273,22 +276,23 @@ def uv2mesh_old(img, mask, cloth_type):
     # 3. detect sewing edge 
     sewing_eddges =  detect_sewing_edges(contour, landmarks, img)
     print(f"sewing_edge: {sewing_eddges}")
-    '''
-    for r in sewing_eddges:
-        s, e = r[0], r[1]
-        if s < e:
-            idx_list = list(range(s,(e+1)))
-        else:
-            idx_list = list(range(s,len(contour))) + list(range(0,e+1))
-        segment = contour[idx_list,:].reshape([-1,1,2])
-        print(f"segment:{s},{e}") # ,{segment}")
-        #cv2.drawContours(img, [segment], -1, (255,255,0)) 
-        cv2.polylines(img, [segment], isClosed = False, color = (255,255,0), thickness = 5)
-        
-    plt.imshow(img), plt.title('sewing edges')
-    plt.show()
-    _ = input(f"next?")
-    '''
+    
+    if False:
+        for r in sewing_eddges:
+            s, e = r[0], r[1]
+            if s < e:
+                idx_list = list(range(s,(e+1)))
+            else:
+                idx_list = list(range(s,len(contour))) + list(range(0,e+1))
+            segment = contour[idx_list,:].reshape([-1,1,2])
+            print(f"segment:{s},{e}") # ,{segment}")
+            #cv2.drawContours(img, [segment], -1, (255,255,0)) 
+            cv2.polylines(img, [segment], isClosed = False, color = (255,255,0), thickness = 5)
+            
+        plt.imshow(img), plt.title('sewing edges')
+        plt.show()
+        _ = input(f"next?")
+    
     
     # 4. create 2D triangle mesh 
     # 4.1. ceate subdiv 
@@ -317,24 +321,28 @@ def uv2mesh_old(img, mask, cloth_type):
     plt.show()
     _ = input(f"next?")
     
-    
-def save_tri_obj(tri, file_path, texture_path = None, texture_size = None):
+'''
 
-    ''' save as Waterfront OBJ file (@TODO Does Traingle package have an API for it?)
+    
+def save_tri_obj(tri, base_dir, file_name, texture_size = None):
+
+    ''' 
+        tri : front 2-d mesh 
+        base_dir:  base_directory 
+        file_name:  used for obj, mtl, texture files 
         
-        none texture version and texture version 
-        
+        save as Waterfront OBJ file (@TODO Does Traingle package have an API for it?)      
     '''
-    with open(file_path, "w") as fp:
+    with open(os.path.join(file_path, file_name + '.obj'), "w") as fp:
 
         # 1. header part if texture used
-        if texture_path is not None:
-             mtl_path = file_path + ".mtl"
-             fp.write( 'mtllib %s\n' % (mtl_path))   # Linking info 
+        if texture_size is not None:
+             mtl_path = os.path.join(file_path, file_name + ".mtl")
+             fp.write( 'mtllib %s\n' % (file_name + ".mtl"))   # Linking info 
              with open(mtl_path, "w") as fp2:         # linking file    
                 fp2.write("newmtl material_0\n")
                 fp2.write("# shader_type beckmann\n")
-                fp2.write("map_Kd %s"%(texture_path))
+                fp2.write("map_Kd %s"%(file_name + ".png"))
                 print('..Output mesh saved to: ', mtl_path) 
           
         # 2. vertices     
@@ -345,13 +353,13 @@ def save_tri_obj(tri, file_path, texture_path = None, texture_size = None):
             fp.write( 'v %.2f %.2f %.2f\n' % ( v[i,0], 1.0 - v[i,1], 0) )  # x, y, z = 0, up side down
            
         # 3. texture vertices if used    
-        if texture_path is not None:    
+        if texture_size is not None:    
             vt = v
             for i in range(len(vt)): 
                 fp.write( 'vt %.2f %.2f %.2f\n' % (vt[i,0], 1.0 - vt[i,1], 0) )  # x, y, z = 0  The UV coordinate u-right, v up   
         
         # 4. faces 
-        if texture_path is not None:                   
+        if texture_size is not None:                   
             f = tri['triangles']   
             for i in range(len(f)): # Faces are 1-based, not 0-based in obj files
                 fp.write( 'f %d/%d %d/%d %d/%d\n' %  (f[i,0]+1, f[i,0]+1, f[i,1]+1, f[i,1]+1, f[i,2]+1, f[i,2]+1) )  # index from 1 in OBJ file 
@@ -360,11 +368,105 @@ def save_tri_obj(tri, file_path, texture_path = None, texture_size = None):
             for i in range(len(f)): # Faces are 1-based, not 0-based in obj files
                 fp.write( 'f %d %d %d\n' %  (f[i,0]+1, f[i,1]+1, f[i,2]+1) )   # index from 1 in OBJ file 
     ## Print message
-    print('..Output mesh saved to: ', file_path)       
+    print('..Output mesh saved to: ', os.path.join(file_path, file_name + '.obj'))       
+    
+       
+def save_both_tri_obj(tri, base_dir, file_name, texture_size = None):
+
+    ''' 
+        tri : front 2-d mesh 
+        base_dir:  base_directory 
+        file_name:  used for obj, mtl, texture files 
+        
+        save two side as Waterfront OBJ file 
+        none texture version and texture version 
+        
+    '''
+    with open(os.path.join(base_dir, file_name + '.obj'), "w") as fp:
+
+        # 1. header part if texture used
+        if texture_size is not None:
+             mtl_path = os.path.join(base_dir, file_name + ".mtl")
+             fp.write( 'mtllib %s\n' % (file_name + ".mtl"))   # Linking info 
+             with open(mtl_path, "w") as fp2:         # linking file    
+                fp2.write("newmtl material_0\n")
+                fp2.write("# shader_type beckmann\n")
+                fp2.write("map_Kd %s"%(file_name + ".png"))
+                print('..Output mesh saved to: ', mtl_path) 
+          
+        # 2. vertices     
+        v = tri['vertices'].copy()
+        v[:,0] = v[:,0]/texture_size[0]  # x width normalization   
+        v[:,1] = v[:,1]/texture_size[1]  # y height normalization 
+        zgap = 0.25
+        # front 
+        for i in range(len(v)): 
+            fp.write( 'v %.2f %.2f %.2f\n' % ( v[i,0], 1.0 - v[i,1],-zgap) )  # x, y, z = 0, up side down
+          
+        # back 
+        for i in range(len(v)): 
+            fp.write( 'v %.2f %.2f %.2f\n' % ( v[i,0], 1.0 - v[i,1], zgap) )  # x, y, z = 0, up side down
+      
+      
+        #front normal vector
+        fp.write("vn 0.000 0.000 -1.000\n")
+        #back normal vector
+        fp.write("vn 0.000 0.000 1.000\n")
+      
+        # 3. texture vertices if used    
+        if texture_size is not None:    
+            vt = tri['vertices'].copy()
+            vt[:,0] = vt[:,0]/texture_size[0]  # [0,1/2]  u   
+            vt[:,1] = vt[:,1]/texture_size[1]    # [0,1] v  
+            for i in range(len(vt)): 
+                fp.write( 'vt %.2f %.2f\n' % (vt[i,0], 1.0 - vt[i,1]) )  # x, y, The UV coordinate u-right, v up   
+            vt[:,0] = vt[:,0] + 0.5  # x width normalization   
+            for i in range(len(vt)): 
+                fp.write( 'vt %.2f %.2f\n' % (vt[i,0], 1.0 - vt[i,1]) )  # x, y,  The UV coordinate u-right, v up   
+        
+        
+        # 4. faces 
+        num_v = len(v)  # number of one side vertices, offset for the back side 
+        if texture_size is not None:                   
+            f = tri['triangles'] 
+            # front 
+            for i in range(len(f)): # Faces are 1-based, not 0-based in obj files
+                fp.write( 'f %d/%d/1 %d/%d/1 %d/%d/1\n' %  
+                    (f[i,0]+1, f[i,0]+1, f[i,1]+1, f[i,1]+1, f[i,2]+1, f[i,2]+1) )  # cw,  1-index 
+       
+            # back 
+            f[:,:] = f[:,:] + num_v
+            for i in range(len(f)): # Faces are 1-based, not 0-based in obj files
+                fp.write( 'f %d/%d/2 %d/%d/2 %d/%d/2\n' % 
+                            (f[i,2]+1, f[i,2]+1, f[i,1]+1, f[i,1]+1, f[i,0]+1, f[i,0]+1) )  # ccw, 1-index
+      
+        else:
+            f = tri['triangles']   
+            # front 
+            for i in range(len(f)): # Faces are 1-based, not 0-based in obj files
+                fp.write( 'f %d/1 %d/1 %d/1\n' %  (f[i,0]+1, f[i,1]+1, f[i,2]+1) )   # cw,  1-index  
+            
+            # back 
+            f[:,:] = f[:,:] + num_v
+            for i in range(len(f)): # Faces are 1-based, not 0-based in obj files
+                fp.write( 'f %d/2 %d/2 %d/2\n' %  (f[i,0]+1, f[i,1]+1, f[i,2]+1) )   # ccw, 1-index            
+                
+    ## Print message
+    print('..Output mesh saved to: ', os.path.join(base_dir, file_name + '.obj'))       
+    
     
 
-def uv2mesh_using_trangle(img, mask, cloth_type, num_grid = 10, debug = False):
+def uv2mesh_using_triangle(img, mask, num_grid = 10, debug = False):
 
+    ''' make well shaped triangle mesh 
+        for front side of clothing 
+        back side will be copied from front side
+        
+        return mesh
+               mesh['vertices']  = the vertices given + added 
+               N  (number contours points)
+    '''
+    
     import triangle as tr
     # pip install triangle  
     
@@ -392,7 +494,7 @@ def uv2mesh_using_trangle(img, mask, cloth_type, num_grid = 10, debug = False):
     max_x, max_y = np.max(contour, 0)
     #print( min_x, min_y)
     #print(max_x, max_y)
-    grid_step = 5 #(max_y - min_y)//num_grid
+    grid_step = (max_y - min_y)//num_grid   # 5
     print(f"step:{grid_step}")
         
     contour_points = []
@@ -415,14 +517,14 @@ def uv2mesh_using_trangle(img, mask, cloth_type, num_grid = 10, debug = False):
         plt.show()
         
     # 3. detect sewing edge 
-    if True:
+    if False:
         sewing_eddges =  detect_sewing_edges(contour, landmarks, img)
         print(f"sewing_edge: {sewing_eddges}")
 
     #print(f"cp-before:{contour_points}")
     contour_points.sort()
     #print(f"cp:{contour_points}")
-    pts = contour[contour_points,:]
+    pts = contour[contour_points,:]  # make the points unique here 
     N = len(pts)
     i = np.arange(N)
     seg = np.stack([i, i + 1], axis=1) % N
@@ -435,10 +537,13 @@ def uv2mesh_using_trangle(img, mask, cloth_type, num_grid = 10, debug = False):
     mesh = tr.triangulate(meshinfo, 'qpa700')
      
     if debug:
+        print(f"input vertices:{pts}")
+        print(f"first out:{mesh['vertices'][:N]}")
         tr.compare(plt, meshinfo, mesh)
         plt.show()
         
-    return mesh    
+       
+    return mesh, N   
  
 
 def test_make_mesh_single_image():
@@ -478,14 +583,16 @@ def test_make_mesh_single_image():
 
 def test_make_mesh_both_image():
 
+    # test sample for top and bottom
+    cloth_id_list = ["dTest", "uTest"]
     cloth_front_list = ["dTest_F", "uTest_F"]
     cloth_back_list = ["dTest_B", "uTest_B"]
     mask_front_list = ["dTest_mask_F", "uTest_mask_F"]
     mask_back_list = [ "dTest_mask_B", "uTest_mask_B"]
     cloth_type_list = ["top_short", "pants_long"]
         
-    for cloth_front, cloth_back, mask_front, mask_back \
-            in zip(cloth_front_list, cloth_back_list, mask_front_list, mask_back_list):
+    for cloth_id, cloth_front, cloth_back, mask_front, mask_back \
+            in zip(cloth_id_list, cloth_front_list, cloth_back_list, mask_front_list, mask_back_list):
 
         # 1. loading clothings and masks
         
@@ -552,7 +659,9 @@ def test_make_mesh_both_image():
         # I recommend to use contours ...
 
         # 3.2 find matching (SCM)
+        # @TODO DUNG
 
+        '''
         match_index_pairs = context_shape_match( .....)
         # also need the x, y coordinate for the indexed points too
         
@@ -562,36 +671,79 @@ def test_make_mesh_both_image():
         # 3.4 warp the back part to match front part 
         cloth_back_warped = cv.warpAffine(cloth_back_flipped, affine_mat, dsize[, dst[, flags[, borderMode[, borderValue]]]]	) ->	dst
         mask_back_warped = cv.warpAffine(mask_back_flipped, affine_mat, dsize[, dst[, flags[, borderMode[, borderValue]]]]	) ->	dst
-
+        '''
+        
+        
         # 3.5 get intersection or front and back 
+        mask_back_warped = mask_back_flipped
         mask_insersection = np.zeros_like(mask_back_warped)
-        mask_intersection = (mask_front > 0) and (mask_back_warped > 0)
+        mask_intersection = ((mask_front > 0) & (mask_back_warped > 0))*255
+        mask_intersection = mask_intersection.astype(np.uint8)
+        
+        # after warping, the intersection should be almost union !
+        if False:
+            test = np.zeros_like(cloth_front)
+            test[:,:,0] = mask_back
+            test[:,:,1] = mask_back_flipped
+            test[:,:,2] = mask_intersection
+            plt.subplot(3,1,1)
+            plt.title('back vs back flipped and intersect')  
+            plt.imshow(test[:,:,::-1])
+            
+            test[:,:,0] = mask_front
+            test[:,:,1] = mask_back_flipped
+            test[:,:,2] = mask_intersection
+            plt.subplot(3,1,2)
+            plt.imshow(test[:,:,::-1])
+            plt.title('front vs back flipped and intersect')
+            
+            plt.subplot(3,1,3)
+            plt.imshow(mask_intersection)
+            plt.show()
         
         # do we need to modify the color clothing based on the mask ? maybe not
         
         # 4. make mesh
         # Professor will make this part first for you.
         # 4.1 get contours for the intersection 
-        tri_mesh = uv2mesh_using_trangle(cloth, cloth_mask, cloth_type, num_grid = 20, debug = True)
+        
+        print(f"type of mask_intersection:{mask_intersection.dtype}")
+        tri_mesh_front, n_contours = uv2mesh_using_triangle(cloth_front, mask_intersection, num_grid = 20, debug = True)
       
         # 4.2 take key points for mesh 
         # 4.3 make a 2D triangle mesh (using trimesh package)
         # 5. save retult
         # 5.1 make a 3D mesh for front and back (with z gap)
         # 5.2 save the mesh into OBJ file 
-        save_tri_obj(tri_mesh, file_path = cloth_id +".obj", texture_path = cloth_path, texture_size =(cloth.shape[1], cloth.shape[0]))        
+        
+       
+        if True:
+            texture  = cv2.hconcat([cloth_front, cloth_back])
+            cloth_texture_path = os.path.join('obj',  cloth_id +".png")
+            cv2.imwrite(cloth_texture_path, texture)
+            save_both_tri_obj(tri_mesh_front, base_dir = 'obj', file_name = cloth_id, 
+                        texture_size =(texture.shape[1], texture.shape[0]))   
+        else:
+            cloth_both = cloth_front
+            cloth_texture_path = os.path.join('obj',  cloth_id +".png")
+            cv2.imwrite(cloth_texture_path, cloth_both)
+            save_tri_obj(tri_mesh_front, base_dir = 'obj', file_name = cloth_id, 
+                        texture_size =(cloth_both.shape[1], cloth_both.shape[0]))        
  
         # @TODO develope a algorithm to decide which vertices are used for sewing ***
         #       This is quite important contribution to the paper
-        
         # 5.3 save sewing vertices indices pairs between front and back into npy file or pickle file 
+        # now saving the all contours vertices index 
         
+        import pickle
+        edge_info = {'front': range(1, n_contours + 1),
+                     'back' : range(len(tri_mesh_front['vertices']), len(tri_mesh_front['vertices']) + n_contours +1)}
+        print(f"edge_info:{edge_info}")
+        with open(os.path.join('obj', cloth_id +'.pickle'), 'wb') as handle:
+            pickle.dump(edge_info, handle)
+     
         
-        '''
-        #uv2mesh_old(cloth, cloth_mask, cloth_type)
-        tri_mesh = uv2mesh_using_trangle(cloth, cloth_mask, cloth_type, num_grid = 20, debug = True)
-       
-        '''
+     
 if __name__ == "__main__":
 
 
