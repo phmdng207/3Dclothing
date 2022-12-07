@@ -190,7 +190,7 @@ def detect_landmarks(contour, contour_points, img,  epsilon = 0.001, min_dist = 
     # contour_points : sampled points list in contours
     # epsilon:  torelance for cv2.approxPolyDP
     # min_dist: radius of non-multiple points samples
-    # return : return the index list for the corners 
+    # return : return the index list for the corners and curvatures  
    
 
     #  Detect Corners 
@@ -199,12 +199,13 @@ def detect_landmarks(contour, contour_points, img,  epsilon = 0.001, min_dist = 
     approx = cv2.approxPolyDP(contour, epsilon, True)
     contour_approx  =  approx.reshape([-1,2])
     # 2.2 get angles 
-    curvature = getCurvature(contour_approx) 
+    curvature = getCurvature(contour_approx, 1) 
     
     #print(f"curvature:{curvature}")    # 4, 5 
     landmarks = []
+    curvature_landmark = []
     # 2.3 detect and marking the corners 
-    curvature_thres  = 30 # degree
+    curvature_thres  = 30 #30 # degree
     if debug:
         print(f"len(contour_approx)={len(contour_approx)}")
         print(f"curvature={curvature}")
@@ -218,14 +219,15 @@ def detect_landmarks(contour, contour_points, img,  epsilon = 0.001, min_dist = 
             if not(nearest_idx in contour_points):  # BUG FIX: 2022.11.10
                 if (len(landmarks) == 0) or (not(nearest_idx in landmarks) and nearest_dist(nearest_idx,landmarks, contour) > min_dist**2) : 
                     landmarks.append(nearest_idx)  
+                    curvature_landmark.append(curvature[i])
                     contour_points.append(nearest_idx)
                     # viualize 
                     if debug:
                         cv2.drawMarker(img, (contour[nearest_idx,0],contour[nearest_idx,1]), color=(255,0,0), markerType=cv2.MARKER_STAR, markerSize = 4, thickness=1)
-                        cv2.putText(img, str(count_landmarks), org = (contour[nearest_idx,0],contour[nearest_idx,1]), fontFace = cv2.FONT_HERSHEY_SIMPLEX, fontScale = 1, color = (255,0,0), thickness = 1)
+                        cv2.putText(img, f"{count_landmarks}({curvature[i]:.0f})", org = (contour[nearest_idx,0],contour[nearest_idx,1]), fontFace = cv2.FONT_HERSHEY_SIMPLEX, fontScale = 0.5, color = (255,0,0), thickness = 1)
                     count_landmarks += 1
 
-    return landmarks
+    return landmarks, curvature_landmark
     
 
 '''
@@ -513,7 +515,7 @@ def uv2mesh_using_triangle(img, mask, num_grid = 10, debug = False):
                 cv2.drawMarker(img, (contour[i,0],contour[i,1]), color=(0,255,0), markerType=cv2.MARKER_CROSS, markerSize = 4, thickness=1)
 
     # 2. detect landmark corners 
-    landmarks = detect_landmarks(contour, contour_points, img)    
+    landmarks, _  = detect_landmarks(contour, contour_points, img)    
     if debug:
         print(f"landmarks:{landmarks}")
         plt.imshow(img)
@@ -548,7 +550,7 @@ def uv2mesh_using_triangle(img, mask, num_grid = 10, debug = False):
        
     return mesh, N   
  
-def matching_back_to_front_pca(clothF, clothF_mask, clothB, clothB_mask):
+def match_back2front_pca(clothF, clothF_mask, clothB, clothB_mask):
 
     ''' 
         matching/warping back to front using PCA method 
@@ -598,6 +600,98 @@ def matching_back_to_front_pca(clothF, clothF_mask, clothB, clothB_mask):
     clothB_mask_warped = cv2.warpAffine(clothB_mask, M, (w,h))
     
     return clothB_warped, clothB_mask_warped
+  
+
+def match_back2front_landmarks(clothF, clothF_mask, clothB, clothB_mask, debug = True):
+
+    ''' 
+        matching/warping back to front using landmarks  
+    
+    '''
+  
+    (h,w) = clothF.shape[:2]
+  
+  
+    # FRONT 
+    if cv2.__version__[0] == '3':  
+        __,contours,hierarchy = cv2.findContours(clothF_mask, mode = cv2.RETR_EXTERNAL , method = cv2.CHAIN_APPROX_SIMPLE  )
+    else:
+        contours,hierarchy = cv2.findContours(clothF_mask, mode = cv2.RETR_EXTERNAL , method = cv2.CHAIN_APPROX_SIMPLE  )
+    
+    #print(f"len(contours):{len(contours)}")
+    #print(f"contours[0].shape:{contours[0].shape}")
+    #print(f"hierarchy:{hierarchy}")
+    #cv2.drawContours(img,[box],0,(0,0,255),2)
+    
+    # the exterior points 
+    contourF  =  contours[0].reshape([-1,2])
+  
+    # 2. detect landmark corners 
+    contour_pointsF = []
+    landmarksF, curvatureF = detect_landmarks(contourF, contour_pointsF, clothF, debug=True)   
+
+    ## BACK 
+    if cv2.__version__[0] == '3':  
+        __,contours,hierarchy = cv2.findContours(clothB_mask, mode = cv2.RETR_EXTERNAL , method = cv2.CHAIN_APPROX_SIMPLE  )
+    else:
+        contours,hierarchy = cv2.findContours(clothB_mask, mode = cv2.RETR_EXTERNAL , method = cv2.CHAIN_APPROX_SIMPLE  )
+    
+    #print(f"len(contours):{len(contours)}")
+    #print(f"contours[0].shape:{contours[0].shape}")
+    #print(f"hierarchy:{hierarchy}")
+    #cv2.drawContours(img,[box],0,(0,0,255),2)
+    
+    # the exterior points 
+    contourB  =  contours[0].reshape([-1,2])
+  
+    # 2. detect landmark corners 
+    contour_pointsB = []
+    landmarksB, curvatureB = detect_landmarks(contourB, contour_pointsB, clothB,  debug=True)   
+
+    
+    if debug:
+        print(f"landmarksF:{landmarksF}")
+        print(f"landmarksB:{landmarksB}")
+        plt.subplot(1,3,1)
+        plt.imshow(clothF)
+        plt.subplot(1,3,2)
+        plt.imshow(clothB)
+        plt.subplot(1,3,3)
+        # draw the contours and lanmaks
+        img = np.zeros_like(clothB)
+        count = 0
+        for i in landmarksF:
+            cv2.drawMarker(img, (contourF[i,0],contourF[i,1]), color=(255,0,0), markerType=cv2.MARKER_STAR, markerSize = 4, thickness=1)
+            cv2.putText(img, f"{count}({curvatureF[count]:.0f})", org = (contourF[i,0],contourF[i,1]), fontFace = cv2.FONT_HERSHEY_SIMPLEX, fontScale = 0.5, color = (255,0,0), thickness = 1)
+            count +=1
+        count = 0
+        for i in landmarksB:
+            cv2.drawMarker(img, (contourB[i,0],contourB[i,1]), color=(0,0,255), markerType=cv2. MARKER_DIAMOND , markerSize = 4, thickness=1)
+            cv2.putText(img, f"{count}({curvatureB[count]:.0f})", org = (contourB[i,0],contourB[i,1]), fontFace = cv2.FONT_HERSHEY_SIMPLEX, fontScale = 0.5, color = (0,0,255), thickness = 1)
+            count +=1
+        plt.imshow(img[:,:,::-1])        
+        
+        plt.show()
+   
+   
+    # 2. find the matching withinin distance 
+    dist_thres = 10  # 0.5 between the minum corner distance 
+   
+    if False:
+   
+        # 3. elipse approximation and 3 points (center and long and short end points)
+        affinePtsF = np.float32()
+        affinePtsB = np.float32()
+        
+        # 4. estimate Affine matrix from 3 points 
+        M = cv2.getAffineTransform(affinePtsB, affinePtsF)
+        
+        # 5. warping back to match front as much as possible 
+        clothB_warped = cv2.warpAffine(clothB, M, (w,h))
+        clothB_mask_warped = cv2.warpAffine(clothB_mask, M, (w,h))
+        
+        return clothB_warped, clothB_mask_warped  
+  
   
 
 def test_make_mesh_single_image():
@@ -711,8 +805,12 @@ def test_make_mesh_both_image():
         # 3. matching two parts 
         
         # using PCA method         
-        cloth_back_flipped, mask_back_flipped = matching_back_to_front_pca(cloth_front, mask_front, cloth_back_flipped, mask_back_flipped)
+        cloth_back_flipped, mask_back_flipped = match_back2front_pca(cloth_front, mask_front, cloth_back_flipped, mask_back_flipped)
 
+        # refine using landmarks 
+        if False:
+            match_back2front_landmarks(cloth_front, mask_front, cloth_back_flipped, mask_back_flipped)
+            #cloth_back_flipped, mask_back_flipped = match_back2front_landmarks(cloth_front, mask_front, cloth_back_flipped, mask_back_flipped)
 
         '''
           # @TODO DUNG  (SCM)
@@ -732,13 +830,9 @@ def test_make_mesh_both_image():
         mask_back_warped = cv.warpAffine(mask_back_flipped, affine_mat, dsize[, dst[, flags[, borderMode[, borderValue]]]]	) ->	dst
         '''
         
-        
-        # 3.5 get intersection or front and back 
-        mask_back_warped = mask_back_flipped
-        mask_insersection = np.zeros_like(mask_back_warped)
-        mask_intersection = ((mask_front > 0) & (mask_back_warped > 0))*255
-        mask_intersection = mask_intersection.astype(np.uint8)
-        
+        # 3.5 get intersection or front and back   
+        mask_intersection = cv2.bitwise_and(mask_back_flipped, mask_front)
+      
         # after warping, the intersection should be almost union !
         if True:
             test = np.zeros_like(cloth_front)
@@ -755,7 +849,6 @@ def test_make_mesh_both_image():
             plt.subplot(2,3,2)
             plt.imshow(test[:,:,::-1])
             plt.title('front vs back flipped and intersect')
-            
             
             plt.subplot(2,3,3)
             plt.imshow( mask_intersection  )
@@ -777,7 +870,7 @@ def test_make_mesh_both_image():
         # 4.1 get contours for the intersection 
         
         print(f"type of mask_intersection:{mask_intersection.dtype}")
-        tri_mesh_front, n_contours = uv2mesh_using_triangle(cloth_front, mask_intersection, num_grid = 20, debug = False)
+        tri_mesh_front, n_contours = uv2mesh_using_triangle(cloth_front, mask_intersection, num_grid = 20, debug = True)
       
         # 4.2 take key points for mesh 
         # 4.3 make a 2D triangle mesh (using trimesh package)
