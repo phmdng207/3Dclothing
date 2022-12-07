@@ -14,73 +14,6 @@ import os
  
 '''
 
-'''
-# Check if a point is inside a rectangle
-def _rect_contains(rect, point) :
-    if point[0] < rect[0] :
-        return False
-    elif point[1] < rect[1] :
-        return False
-    elif point[0] > rect[2] :
-        return False
-    elif point[1] > rect[3] :
-        return False
-    return True
-    
-def inside_object_simple(mask, pt0, pt1, pt2):
-    
-    # @ToDO check all pixel positions 
-    # now simply check centroid of triangle 
-
-    pt = (int((pt0[0] + pt1[0] + pt2[0])/3), int((pt0[1] + pt1[1]+ pt2[1])/3)) # centroid
-    
-    if mask[pt[1], pt[0]] > 0:
-        return True
-    else:
-        return False
-
-def _inside_object(mask, pt0, pt1, pt2):
-    
-    # @ToDO check all pixel positions 
-    # now simply check centroid of triangle 
-
-    v1 = (pt1[0] - pt0[0], pt1[1] - pt0[1])
-    v2 = (pt2[0] - pt0[0], pt2[1] - pt0[1])
-    
-    for t1 in [0.1, 0.3, 0.5, 0.7, 0.9]:
-        for t2 in [0.1, 0.3, 0.5, 0.7, 0.9]:
-            if t1 + t2 < 1.0:
-                p = (int(pt0[0] + t1 * v1[0] + t2*v2[0]), int(pt0[1] + t1 * v1[1] + t2*v2[1])) 
-                if mask[p[1], p[0]] <= 0:
-                    return False
-                    
-    return True
-        
-    
-def _filter_inner_triangles(r, subdiv, object_mask) :
-
-    triangleList = subdiv.getTriangleList();
-   
-    inside_triangleList = []
-    for t in triangleList :
-        pt1 = (t[0], t[1])
-        pt2 = (t[2], t[3])
-        pt3 = (t[4], t[5])
-
-        if rect_contains(r, pt1) and rect_contains(r, pt2) and rect_contains(r, pt3) :
-            if inside_object(object_mask, pt1, pt2, pt3) :    
-                inside_triangleList.append([pt1, pt2, pt3])
-                
-    return  inside_triangleList           
-'''
-               
-def draw_delaunay(img, triangleList, delaunay_color) :
-
-    for t in triangleList :
-        cv2.line(img, t[0], t[1], delaunay_color, 1) #, cv2.CV_AA, 0)
-        cv2.line(img, t[1], t[2], delaunay_color, 1) #, cv2.CV_AA, 0)
-        cv2.line(img, t[2], t[0], delaunay_color, 1) #, cv2.CV_AA, 0)
-
 
 def getCurvature(contour, stride=1):
     
@@ -113,39 +46,19 @@ def getCurvature(contour, stride=1):
     
     return curvature
     
-def find_nearest_point(pt, contour):
-    
+def find_nearest_point_index(pt, contour):
+
     ''' KD tree is not for this, since only one time used '''
-    
     distances = (contour[:,0]-pt[0])**2 + (contour[:,1]-pt[1])**2 
     return np.argmin(distances)
-    
-   
+
 
 def nearest_dist(nearest_idx, landmarks, contour):
-
 
     xt, yt = contour[nearest_idx,0], contour[nearest_idx,1]
     distances = (contour[landmarks,0]-xt)**2 + (contour[landmarks,1]-yt)**2 
     return np.min(distances)
-  
-    # @TODO efficency 
-    '''
-  
-    xt, yt = contour[nearest_idx,0], contour[nearest_idx,1]
-    
-    x, y  = contour[landmarks[0],0], contour[landmarks[0],1]
-    min_dist =  (x-xt)*(x-xt) + (y-yt)*(y-yt)
-    
-    for i in range(1, len(landmarks)):
-        x, y = contour[landmarks[i],0], contour[landmarks[i],1]
-        dist = (x-xt)*(x-xt) + (y-yt)*(y-yt)
-        if dist < min_dist:
-            min_dist = dist
-        
-    return min_dist
-    '''
-    
+     
     
 def detect_sewing_edges(contour, landmarks, img, vis = True):
 
@@ -214,7 +127,7 @@ def detect_landmarks(contour, contour_points, img,  epsilon = 0.001, min_dist = 
     for i in range(len(contour_approx)):
         if curvature[i] > curvature_thres or  curvature[i] < -curvature_thres:  # some meaningfull angles 
             # find closest contour points 
-            nearest_idx = find_nearest_point((contour_approx[i,0],contour_approx[i,1]), contour)
+            nearest_idx = find_nearest_point_index((contour_approx[i,0],contour_approx[i,1]), contour)
             #print(f"approx={contour_approx[i,:]}, contour={contour[nearest_idx]} at {nearest_idx}")
             if not(nearest_idx in contour_points):  # BUG FIX: 2022.11.10
                 if (len(landmarks) == 0) or (not(nearest_idx in landmarks) and nearest_dist(nearest_idx,landmarks, contour) > min_dist**2) : 
@@ -228,105 +141,8 @@ def detect_landmarks(contour, contour_points, img,  epsilon = 0.001, min_dist = 
                     count_landmarks += 1
 
     return landmarks, curvature_landmark
-    
-
-'''
-def _uv2mesh_old(img, mask, cloth_type):
-
-    # find contours 
-    # sample contour points 
-    # get the landmarks from the contours (though approximation and cuvatures) and non-maxum supression 
-    # ask the sewing boundary 
-    # trainglurization 
-    
-    # 1. contour from mask 
-    if cv2.__version__[0] == '3':  
-        __,contours,hierarchy = cv2.findContours(mask, mode = cv2.RETR_EXTERNAL , method = cv2.CHAIN_APPROX_SIMPLE  )
-    else:
-        contours,hierarchy = cv2.findContours(mask, mode = cv2.RETR_EXTERNAL , method = cv2.CHAIN_APPROX_SIMPLE  )
-    
-    print(f"len(contours):{len(contours)}")
-    print(f"contours[0].shape:{contours[0].shape}")
-    print(f"hierarchy:{hierarchy}")
-    #cv2.drawContours(img,[box],0,(0,0,255),2)
-    
-    # the exterior points 
-    contour  =  contours[0].reshape([-1,2])
-    #print(contour)
-    min_x, min_y = np.min(contour, 0)
-    max_x, max_y = np.max(contour, 0)
-    #print( min_x, min_y)
-    #print(max_x, max_y)
-    grid_step = (max_y - min_y)//20
-    #print(f"step:{grid_step}")
-        
-    contour_points = []
-    #= contour.tolist()
-    # add contour points
-    i = 0
-    contour_points.append(i)
-    cv2.drawMarker(img, (contour[i,0],contour[i,1]), color=(0,255,0), markerType=cv2.MARKER_CROSS, markerSize = 4, thickness=1)
-    for i in range(1, len(contour)): 
-        dx, dy = contour[i-1,:] - contour[i,:]
-        if dx*dx + dy*dy > grid_step*grid_step:
-            contour_points.append(i)
-            cv2.drawMarker(img, (contour[i,0],contour[i,1]), color=(0,255,0), markerType=cv2.MARKER_CROSS, markerSize = 4, thickness=1)
-
-    # 2. detect landmark corners 
-    landmarks = detect_landmarks(contour, contour_points, img)    
-    print(landmarks)
-
-    # 3. detect sewing edge 
-    sewing_eddges =  detect_sewing_edges(contour, landmarks, img)
-    print(f"sewing_edge: {sewing_eddges}")
-    
-    if False:
-        for r in sewing_eddges:
-            s, e = r[0], r[1]
-            if s < e:
-                idx_list = list(range(s,(e+1)))
-            else:
-                idx_list = list(range(s,len(contour))) + list(range(0,e+1))
-            segment = contour[idx_list,:].reshape([-1,1,2])
-            print(f"segment:{s},{e}") # ,{segment}")
-            #cv2.drawContours(img, [segment], -1, (255,255,0)) 
-            cv2.polylines(img, [segment], isClosed = False, color = (255,255,0), thickness = 5)
-            
-        plt.imshow(img), plt.title('sewing edges')
-        plt.show()
-        _ = input(f"next?")
-    
-    
-    # 4. create 2D triangle mesh 
-    # 4.1. ceate subdiv 
-    rect = (0, 0, mask.shape[1], mask.shape[0])
-    subdiv = cv2.Subdiv2D(rect)
-    # 4.2. add boundary points 
-    for i in contour_points:
-        p = (contour[i, 0], contour[i,1])
-        subdiv.insert(p)
-    
-    # 4.3 add internal points 
-    
-    interior_points = []
-    for x in range(min_x + grid_step, max_x, grid_step): 
-        for y in range(min_y + grid_step, max_y, grid_step):
-            if mask[y,x] > 0:            
-                subdiv.insert( (x,y))
-                cv2.drawMarker(img, (x,y), color=(0,255,0), markerType=cv2.MARKER_CROSS, markerSize = 4, thickness=1)
-    
-    # 4.3 remove traingles outside of the contour             
-    r = (0, 0, img.shape[1], img.shape[0])
-    triangleList = filter_inner_triangles(r, subdiv, cloth_mask)
-    draw_delaunay(img, triangleList, (255, 0, 0))
-   
-    plt.imshow(img), plt.title('traingle mesh')
-    plt.show()
-    _ = input(f"next?")
-    
-'''
-
-    
+ 
+ 
 def save_tri_obj(tri, base_dir, file_name, texture_size = None):
 
     ''' 
@@ -458,8 +274,7 @@ def save_both_tri_obj(tri, base_dir, file_name, texture_size = None):
     print('..Output mesh saved to: ', os.path.join(base_dir, file_name + '.obj'))       
     
     
-
-def uv2mesh_using_triangle(img, mask, num_grid = 10, debug = False):
+def mask2mesh_using_triangle(img, mask, num_grid = 10,  debug = False):
 
     ''' make well shaped triangle mesh 
         for front side of clothing 
@@ -490,27 +305,28 @@ def uv2mesh_using_triangle(img, mask, num_grid = 10, debug = False):
     print(f"hierarchy:{hierarchy}")
     #cv2.drawContours(img,[box],0,(0,0,255),2)
     
-    # the exterior points 
+    # 1. samling the exterior points with min_dist
     contour  =  contours[0].reshape([-1,2])
     #print(contour)
     min_x, min_y = np.min(contour, 0)
     max_x, max_y = np.max(contour, 0)
     #print( min_x, min_y)
     #print(max_x, max_y)
-    grid_step = (max_y - min_y)//num_grid   # 5
-    print(f"step:{grid_step}")
+    min_dist = (max_y - min_y)//num_grid   # 5
+    #print(f"min_dist:{min_dist}")
         
     contour_points = []
-    #= contour.tolist()
-    # add contour points
-    i = 0
-    contour_points.append(i)
+    i = 0 # 1st contour point 
+    contour_points.append(i) 
+    latest_contour_pts = contour[i,:]
     if debug:
         cv2.drawMarker(img, (contour[i,0],contour[i,1]), color=(0,255,0), markerType=cv2.MARKER_CROSS, markerSize = 4, thickness=1)
+    # sampling the minimum distance of min_dist
     for i in range(1, len(contour)): 
-        dx, dy = contour[i-1,:] - contour[i,:]
-        if dx*dx + dy*dy > grid_step*grid_step:
+        dx, dy = latest_contour_pts - contour[i,:]
+        if dx*dx + dy*dy > min_dist*min_dist:
             contour_points.append(i)
+            latest_contour_pts = contour[i,:]
             if debug: 
                 cv2.drawMarker(img, (contour[i,0],contour[i,1]), color=(0,255,0), markerType=cv2.MARKER_CROSS, markerSize = 4, thickness=1)
 
@@ -533,7 +349,7 @@ def uv2mesh_using_triangle(img, mask, num_grid = 10, debug = False):
     N = len(pts)
     i = np.arange(N)
     seg = np.stack([i, i + 1], axis=1) % N
-    if debug:
+    if False:
         print(f"N={N}")
         print(f"pts={pts}")
         print(f"seg={seg}")
@@ -542,12 +358,11 @@ def uv2mesh_using_triangle(img, mask, num_grid = 10, debug = False):
     mesh = tr.triangulate(meshinfo, 'qpa700')
      
     if debug:
-        print(f"input vertices:{pts}")
-        print(f"first out:{mesh['vertices'][:N]}")
+        #print(f"input vertices:{pts}")
+        #print(f"first out:{mesh['vertices'][:N]}")
         tr.compare(plt, meshinfo, mesh)
         plt.show()
         
-       
     return mesh, N   
  
 def match_back2front_pca(clothF, clothF_mask, clothB, clothB_mask):
@@ -606,12 +421,11 @@ def match_back2front_landmarks(clothF, clothF_mask, clothB, clothB_mask, debug =
 
     ''' 
         matching/warping back to front using landmarks  
-    
+        
+        unfinished code
     '''
   
     (h,w) = clothF.shape[:2]
-  
-  
     # FRONT 
     if cv2.__version__[0] == '3':  
         __,contours,hierarchy = cv2.findContours(clothF_mask, mode = cv2.RETR_EXTERNAL , method = cv2.CHAIN_APPROX_SIMPLE  )
@@ -870,7 +684,7 @@ def test_make_mesh_both_image():
         # 4.1 get contours for the intersection 
         
         print(f"type of mask_intersection:{mask_intersection.dtype}")
-        tri_mesh_front, n_contours = uv2mesh_using_triangle(cloth_front, mask_intersection, num_grid = 20, debug = True)
+        tri_mesh_front, n_contours = mask2mesh_using_triangle(cloth_front, mask_intersection, num_grid = 20, debug = True)
       
         # 4.2 take key points for mesh 
         # 4.3 make a 2D triangle mesh (using trimesh package)
@@ -905,6 +719,5 @@ def test_make_mesh_both_image():
             pickle.dump(edge_info, handle)
      
 if __name__ == "__main__":
-
 
     test_make_mesh_both_image()
